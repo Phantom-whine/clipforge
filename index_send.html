@@ -1,0 +1,2122 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClipForge — Video Analysis</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="media/logo-fav.png" type="image/x-icon">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Manrope', 'ui-sans-serif', 'system-ui'],
+                        display: ['Space Grotesk', 'Manrope', 'ui-sans-serif', 'system-ui'],
+                        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+                    },
+                    colors: {
+                        void: '#131316',
+                        panel: '#19191d',
+                        elevated: '#1f1f25',
+                        raised: '#26262d',
+                        hair: '#2b2b32',
+                        hair2: '#34343c',
+                        ink: '#e8e8ea',
+                        ink2: '#9a9aa3',
+                        ink3: '#5f5f68',
+                        signal: '#5DF838',
+                        brand: '#5DF838',
+                        signaldim: '#1c3227',
+                        gold: '#D6B85F',
+                        golddim: '#332c19',
+                        coral: '#D6705F',
+                        coraldim: '#331e19',
+                    },
+                    boxShadow: {
+                        panel: '0 1px 0 0 rgba(255,255,255,0.03) inset',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #303038;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3c3c46;
+        }
+
+        body {
+            font-feature-settings: "tnum" 1;
+            text-rendering: optimizeLegibility;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            font-family: 'Space Grotesk', 'Manrope', ui-sans-serif, system-ui, sans-serif;
+            letter-spacing: 0;
+        }
+
+        .font-display {
+            font-family: 'Space Grotesk', 'Manrope', ui-sans-serif, system-ui, sans-serif;
+        }
+
+        .splash-logo {
+            animation: splashLogo 1.4s ease-in-out both;
+        }
+
+        @keyframes splashLogo {
+            0% {
+                opacity: 0;
+                transform: scale(0.88);
+            }
+
+            35%,
+            70% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.04);
+            }
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+
+        .tick-grid {
+            background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 24px);
+        }
+
+        .scope-ring {
+            --pct: 0;
+            --ring-color: #5DF838;
+            background: conic-gradient(var(--ring-color) calc(var(--pct) * 1%), #2b2b32 0);
+        }
+
+        .focus-ring:focus-visible {
+            outline: 2px solid #5DF838;
+            outline-offset: 2px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.001ms !important;
+                transition-duration: 0.001ms !important;
+            }
+        }
+    </style>
+</head>
+
+<body class="h-full bg-void text-ink font-sans antialiased" x-data="app()" x-init="init()">
+
+    <!-- Cached invalid state intentionally remains until manually cleared. -->
+    <div x-show="accessState === 'invalid'" x-cloak
+        class="fixed inset-0 z-[200] flex items-center justify-center bg-black text-white"
+        role="alert">
+        <span class="text-2xl font-semibold tracking-[0.3em]">NOT VALID</span>
+    </div>
+
+    <div x-show="accessState !== 'invalid'" class="flex h-screen w-screen overflow-hidden relative">
+
+        <!-- Startup splash -->
+        <div x-show="splashVisible" x-cloak x-transition.opacity.duration.300ms
+            class="fixed inset-0 z-[100] flex items-center justify-center bg-black" aria-label="Loading ClipForge"
+            role="status">
+            <img src="media/logo.png" alt="ClipForge" class="splash-logo w-32 h-32 sm:w-40 sm:h-40 rounded-2xl object-cover">
+        </div>
+
+        <!-- Mobile overlay -->
+        <div x-show="sidebarOpen" x-cloak x-transition.opacity @click="sidebarOpen = false"
+            class="fixed inset-0 bg-black z-30 md:hidden"></div>
+
+        <!-- ============ SIDEBAR ============ -->
+        <aside
+            class="fixed md:static inset-y-0 left-0 z-40 w-[240px] md:w-[220px] shrink-0 bg-panel border-r border-hair flex flex-col shadow-panel transform transition-[width,transform] duration-200 ease-out -translate-x-full md:translate-x-0"
+            :class="[sidebarOpen ? 'translate-x-0' : '-translate-x-full', sidebarCollapsed ? 'md:w-[68px]' : 'md:w-[220px]']">
+            <div class="h-14 flex items-center justify-between gap-2.5 px-4 border-b border-hair shrink-0"
+                :class="sidebarCollapsed ? 'md:px-2 md:justify-center' : ''">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <div :class="sidebarCollapsed ? 'md:hidden' : ''">
+                        <img src="media/logo.png" alt="Logo" class="w-10 h-8 rounded-md">
+                    </div>
+                    <span class="text-[13px] font-semibold tracking-wide text-ink truncate"
+                        :class="sidebarCollapsed ? 'md:hidden' : ''">ClipForge</span>
+                </div>
+                <button @click="toggleSidebar()"
+                    class="hidden md:flex w-6 h-6 items-center justify-center rounded text-ink3 hover:text-ink hover:bg-elevated focus-ring shrink-0"
+                    :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+                    <i class="fa-solid text-[10px]"
+                        :class="sidebarCollapsed ? 'fa-angles-right' : 'fa-angles-left'"></i>
+                </button>
+                <button @click="sidebarOpen = false" class="md:hidden text-ink3 hover:text-ink focus-ring">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <nav class="flex-1 px-2.5 py-3 space-y-0.5 overflow-y-auto" :class="sidebarCollapsed ? 'md:px-2' : ''">
+                <button @click="view = 'upload'; selectedClip = null; selectedProject = null; sidebarOpen = false"
+                    title="New Project"
+                    class="w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[13px] transition-colors focus-ring"
+                    :class="[sidebarCollapsed ? 'md:justify-center md:px-2' : '', view === 'upload' || view === 'processing' || view === 'results' ? 'bg-elevated text-ink' : 'text-ink2 hover:bg-elevated/60 hover:text-ink']">
+                    <i class="fa-regular fa-square-plus w-3.5 text-center"></i>
+                    <span :class="sidebarCollapsed ? 'md:hidden' : ''">New Project</span>
+                </button>
+                <button @click="openProjects(); sidebarOpen = false" title="Projects"
+                    class="w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[13px] transition-colors focus-ring"
+                    :class="[sidebarCollapsed ? 'md:justify-center md:px-2' : '', view === 'projects' || view === 'project-detail' ? 'bg-elevated text-ink' : 'text-ink2 hover:bg-elevated/60 hover:text-ink']">
+                    <i class="fa-regular fa-folder w-3.5 text-center"></i>
+                    <span :class="sidebarCollapsed ? 'md:hidden' : ''">Projects</span>
+                    <span x-show="projects.length" x-text="projects.length"
+                        class="ml-auto text-[10px] font-mono text-ink3"
+                        :class="sidebarCollapsed ? 'md:hidden' : ''"></span>
+                </button>
+
+                <div class="!mt-4 pt-3 border-t border-hair space-y-0.5"
+                    :class="sidebarCollapsed ? 'md:mt-4 md:pt-3' : ''">
+                    <button @click="view = 'settings'; sidebarOpen = false" title="Settings"
+                        class="w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[13px] transition-colors focus-ring"
+                        :class="[sidebarCollapsed ? 'md:justify-center md:px-2' : '', view === 'settings' ? 'bg-elevated text-ink' : 'text-ink2 hover:bg-elevated/60 hover:text-ink']">
+                        <i class="fa-solid fa-sliders w-3.5 text-center"></i>
+                        <span :class="sidebarCollapsed ? 'md:hidden' : ''">Settings</span>
+                    </button>
+                    <button @click="view = 'about'; sidebarOpen = false" title="About"
+                        class="w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[13px] transition-colors focus-ring"
+                        :class="[sidebarCollapsed ? 'md:justify-center md:px-2' : '', view === 'about' ? 'bg-elevated text-ink' : 'text-ink2 hover:bg-elevated/60 hover:text-ink']">
+                        <i class="fa-regular fa-circle-question w-3.5 text-center"></i>
+                        <span :class="sidebarCollapsed ? 'md:hidden' : ''">About</span>
+                    </button>
+                </div>
+            </nav>
+
+            <div class="px-4 py-3 border-t border-hair shrink-0"
+                :class="sidebarCollapsed ? 'md:px-2 md:flex md:justify-center' : ''">
+                <div class="flex items-center gap-2">
+                    <span class="relative flex h-1.5 w-1.5">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60"
+                            :class="apiConnected ? 'bg-signal' : 'bg-coral'"></span>
+                        <span class="relative inline-flex rounded-full h-1.5 w-1.5"
+                            :class="apiConnected ? 'bg-signal' : 'bg-coral'"></span>
+                    </span>
+                    <span class="text-[11px] text-ink3 font-mono" :class="sidebarCollapsed ? 'md:hidden' : ''"
+                        x-text="apiConnected ? 'Online' : 'Offline'"></span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ============ MAIN AREA ============ -->
+        <main class="flex-1 min-w-0 w-full flex flex-col overflow-hidden relative bg-black">
+
+            <!-- Mobile top bar -->
+            <div class="md:hidden h-12 flex items-center gap-3 px-4 border-b border-hair bg-panel shrink-0">
+                <button @click="sidebarOpen = true" class="text-ink2 hover:text-ink focus-ring">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <div class="w-5 h-5 rounded bg-signaldim border border-signal/30 flex items-center justify-center">
+                    <i class="fa-solid fa-scissors text-signal text-[9px]"></i>
+                </div>
+                <span class="text-[13px] font-semibold text-ink">ClipForge</span>
+            </div>
+
+            <!-- ---------- UPLOAD VIEW ---------- -->
+            <template x-if="view === 'upload'">
+                <div class="flex-1 overflow-y-auto">
+                    <div class="h-14 flex items-center justify-between px-4 md:px-6 border-b border-hair">
+                        <h1 class="text-[13px] font-semibold text-ink">Untitled Project</h1>
+                        <span class="text-[11px] text-ink3 font-mono">v0.9.2</span>
+                    </div>
+
+                    <div class="max-w-3xl mx-auto px-4 md:px-6 py-6 md:py-10">
+
+                        <!-- Dropzone -->
+                        <template x-if="!selectedFile">
+                            <div @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false"
+                                @drop.prevent="handleDrop($event)"
+                                class="rounded-lg border border-dashed transition-colors px-5 md:px-8 py-10 md:py-16 flex flex-col items-center text-center"
+                                :class="dragging ? 'border-signal/60 bg-signaldim/30' : 'border-hair2 bg-elevated/40'">
+                                <div
+                                    class="w-12 h-12 rounded-full bg-raised border border-hair2 flex items-center justify-center mb-4">
+                                    <i class="fa-solid fa-film text-ink2 text-lg"></i>
+                                </div>
+                                <p class="text-[14px] text-ink font-medium">Drop a video file here</p>
+                                <p class="text-[12px] text-ink3 mt-1">Supports MP4, MOV, MKV, AVI, WebM — up to 8 GB</p>
+                                <input x-ref="fileInput" type="file" @change="handleFileSelect($event)"
+                                    accept="video/mp4,video/quicktime,video/x-matroska,video/webm,audio/mpeg,audio/mp4"
+                                    class="hidden">
+                                <button @click="$refs.fileInput.click()"
+                                    class="mt-5 px-4 py-2 rounded-md bg-raised border border-hair2 text-[13px] text-ink hover:bg-hair2 transition-colors focus-ring">
+                                    <i class="fa-regular fa-folder-open mr-2 text-ink2"></i>Browse Files
+                                </button>
+                            </div>
+                        </template>
+
+                        <!-- Video info panel -->
+                        <template x-if="selectedFile">
+                            <div class="space-y-5">
+                                <!-- File Header Card -->
+                                <div class="rounded-xl border border-hair bg-elevated/80 overflow-hidden shadow-sm">
+                                    <div class="flex items-center gap-3 p-3.5">
+                                        <div
+                                            class="w-11 h-11 rounded-lg bg-gradient-to-br from-brand/15 to-brand/5 border border-hair2 flex items-center justify-center shrink-0">
+                                            <i class="fa-solid text-lg text-brand"
+                                                :class="form.file_type === 'mp3' ? 'fa-music' : 'fa-film'"></i>
+                                        </div>
+
+                                        <div class="min-w-0 flex-1">
+                                            <div class="flex items-center gap-2 min-w-0">
+                                                <p class="text-[13px] font-semibold text-ink truncate"
+                                                    x-text="selectedFile.name"></p>
+                                                <span
+                                                    class="shrink-0 px-1.5 py-0.5 rounded border border-signal/30 bg-signaldim text-[9px] font-mono uppercase text-signal"
+                                                    x-text="form.file_type"></span>
+                                            </div>
+                                            <div
+                                                class="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-1 text-[10px] text-ink3 font-mono">
+                                                <span x-text="formatFileSize(selectedFile.size)"></span>
+                                                <span class="text-hair2">|</span>
+                                                <span class="inline-flex items-center gap-1 text-signal"><i
+                                                        class="fa-solid fa-circle-check text-[9px]"></i>Ready to
+                                                    analyze</span>
+                                            </div>
+                                        </div>
+
+                                        <button @click="selectedFile = null; description = ''"
+                                            class="w-7 h-7 rounded-md text-ink3 hover:text-coral hover:bg-coraldim/40 transition-colors focus-ring shrink-0"
+                                            title="Remove file" aria-label="Remove file">
+                                            <i class="fa-solid fa-xmark text-xs"></i>
+                                        </button>
+                                    </div>
+
+                                    <!-- Progress Bar (if uploading) -->
+                                    <template x-if="uploading">
+                                        <div class="h-1 bg-hair/30">
+                                            <div class="h-full bg-brand animate-pulse" style="width: 60%"></div>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- Project Name -->
+                                <div class="space-y-2">
+                                    <label class="text-xs font-medium text-ink2 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-folder-open text-[10px]"></i>
+                                        Project name
+                                    </label>
+                                    <input type="text" x-model="projectName" placeholder="My Awesome Project"
+                                        class="w-full bg-raised border border-hair2 rounded-lg px-4 py-2.5 text-sm text-ink placeholder:text-ink3/60 focus:border-brand/50 focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none">
+                                </div>
+
+                                <!-- Content Context -->
+                                <div class="rounded-xl border border-hair bg-elevated/50 overflow-hidden">
+                                    <button type="button" @click="descriptionOpen = !descriptionOpen"
+                                        class="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-elevated transition-colors focus-ring">
+                                        <span class="flex items-center gap-2 text-xs font-semibold text-ink2">
+                                            <i class="fa-solid fa-wand-magic-sparkles text-brand text-[10px]"></i>
+                                            Give AI more context
+                                            <span class="text-[10px] font-normal text-ink3">Optional</span>
+                                        </span>
+                                        <span class="flex items-center gap-2">
+                                            <span x-show="description"
+                                                class="text-[10px] text-signal font-mono">Added</span>
+                                            <i class="fa-solid fa-chevron-down text-[10px] text-ink3 transition-transform"
+                                                :class="descriptionOpen ? 'rotate-180' : ''"></i>
+                                        </span>
+                                    </button>
+                                    <div x-show="descriptionOpen" x-transition class="px-4 pb-4 space-y-2">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <label for="content-description" class="text-[11px] text-ink3">Topic,
+                                                audience, goals, or moments to favor</label>
+                                            <span class="text-[10px] text-ink3 font-mono"
+                                                x-text="`${description.length}/2000`"></span>
+                                        </div>
+                                        <textarea id="content-description" x-model="description" maxlength="2000"
+                                            rows="3"
+                                            placeholder="Example: A founder interview for startup creators. Favor practical advice and surprising lessons."
+                                            class="w-full resize-y bg-raised border border-hair2 rounded-lg px-3 py-2.5 text-[12px] text-ink leading-relaxed placeholder:text-ink3/60 focus:border-brand/50 focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none"></textarea>
+                                        <p class="text-[10px] text-ink3">This helps AI choose clips that fit your topic,
+                                            audience, or campaign.</p>
+                                    </div>
+                                </div>
+
+                                <!-- Analysis Configuration -->
+                                <div class="rounded-xl border border-hair bg-elevated/60 p-5 space-y-5 shadow-sm">
+                                    <!-- Section Header -->
+                                    <div class="flex items-center gap-2 pb-3 border-b border-hair/50">
+                                        <i class="fa-solid fa-sliders text-xs text-brand"></i>
+                                        <p class="text-xs font-bold text-ink uppercase tracking-wide">Analysis
+                                            Configuration</p>
+                                    </div>
+
+                                    <!-- Grid Layout -->
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <!-- Clip Duration -->
+                                        <div class="space-y-2">
+                                            <label class="text-xs font-medium text-ink2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-clock text-[10px]"></i>
+                                                Clip duration
+                                            </label>
+                                            <div class="relative">
+                                                <select x-model="form.target_duration"
+                                                    class="w-full bg-raised border border-hair2 rounded-lg px-4 py-2.5 text-sm text-ink appearance-none cursor-pointer focus:border-brand/50 focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none pr-10">
+                                                    <option value="15-30">15–30 seconds</option>
+                                                    <option value="30-60">30–60 seconds</option>
+                                                    <option value="60-90">60–90 seconds</option>
+                                                </select>
+                                                <i
+                                                    class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink3 pointer-events-none"></i>
+                                            </div>
+                                        </div>
+
+                                        <!-- Number of Clips -->
+                                        <div class="space-y-2">
+                                            <label class="text-xs font-medium text-ink2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-film text-[10px]"></i>
+                                                Number of clips
+                                            </label>
+                                            <div class="relative">
+                                                <select x-model="form.clip_count"
+                                                    class="w-full bg-raised border border-hair2 rounded-lg px-4 py-2.5 text-sm text-ink appearance-none cursor-pointer focus:border-brand/50 focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none pr-10">
+                                                    <option value="5">5 clips</option>
+                                                    <option value="8">8 clips</option>
+                                                    <option value="12">12 clips</option>
+                                                    <option value="balanced">Auto — let AI decide</option>
+                                                </select>
+                                                <i
+                                                    class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink3 pointer-events-none"></i>
+                                            </div>
+                                        </div>
+
+                                        <!-- Language -->
+                                        <div class="space-y-2">
+                                            <label class="text-xs font-medium text-ink2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-language text-[10px]"></i>
+                                                Content language
+                                            </label>
+                                            <div class="relative">
+                                                <select x-model="options.language"
+                                                    class="w-full bg-raised border border-hair2 rounded-lg px-4 py-2.5 text-sm text-ink appearance-none cursor-pointer focus:border-brand/50 focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none pr-10">
+                                                    <option>Auto-detect</option>
+                                                    <option>English</option>
+                                                    <option>Spanish</option>
+                                                    <option>French</option>
+                                                    <option>German</option>
+                                                    <option>Japanese</option>
+                                                </select>
+                                                <i
+                                                    class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink3 pointer-events-none"></i>
+                                            </div>
+                                        </div>
+
+                                        <!-- Intensity -->
+                                        <div class="space-y-2">
+                                            <label class="text-xs font-medium text-ink2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-gauge-high text-[10px]"></i>
+                                                Analysis intensity
+                                            </label>
+                                            <div class="relative">
+                                                <select x-model="options.intensity"
+                                                    class="w-full bg-raised border border-hair2 rounded-lg px-4 py-2.5 text-sm text-ink appearance-none cursor-pointer focus:border-brand/50 focus:ring-2 focus:ring-brand/20 transition-all duration-200 outline-none pr-10">
+                                                    <option>Fast</option>
+                                                    <option>Balanced</option>
+                                                    <option>Thorough</option>
+                                                </select>
+                                                <i
+                                                    class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink3 pointer-events-none"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Moment Types -->
+                                    <div class="space-y-2.5 pt-2 border-t border-hair/50">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <label class="text-xs font-medium text-ink2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-star text-[10px]"></i>
+                                                Prioritize these moments
+                                            </label>
+                                            <button type="button" @click="toggleAllMomentTypes()"
+                                                class="text-[10px] font-semibold text-signal hover:text-ink transition-colors focus-ring"
+                                                x-text="form.moment_types.length === momentTypes.length ? 'Clear all' : 'Select all'"></button>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <template x-for="moment in momentTypes" :key="moment.value">
+                                                <button @click="toggleMomentType(moment.value)"
+                                                    class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 focus-ring"
+                                                    :class="form.moment_types.includes(moment.value) ? 'bg-brand/10 border-brand/40 text-brand shadow-sm' : 'bg-raised border-hair2 text-ink2 hover:border-hair hover:text-ink hover:bg-elevated'">
+                                                    <span x-text="moment.label"></span>
+                                                </button>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Submit Button -->
+                                <button @click="submitProject()" :disabled="uploading"
+                                    :class="uploading ? 'opacity-70 cursor-not-allowed' : 'hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0'"
+                                    class="w-full py-3 rounded-xl bg-signal text-void text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2.5 focus-ring shadow-md disabled:shadow-none">
+                                    <i class="fa-solid"
+                                        :class="uploading ? 'fa-circle-notch animate-spin' : 'fa-wand-magic-sparkles'"></i>
+                                    <span x-text="uploading ? 'Processing...' : 'Analyze Video with AI'"></span>
+                                </button>
+                            </div>
+                        </template>
+
+                    </div>
+                </div>
+            </template>
+
+            <!-- ---------- PROJECTS VIEW ---------- -->
+            <template x-if="view === 'projects'">
+                <div class="flex-1 overflow-y-auto">
+                    <div class="h-14 flex items-center justify-between px-4 md:px-6 border-b border-hair">
+                        <div>
+                            <h1 class="text-[13px] font-semibold text-ink">Projects</h1>
+                            <p class="text-[11px] text-ink3 mt-0.5">All video analysis projects</p>
+                        </div>
+                        <button @click="view = 'upload'; selectedFile = null; selectedProject = null"
+                            class="px-3 py-1.5 rounded-md bg-signal text-void text-[12px] font-semibold hover:bg-signal/90 transition-colors focus-ring"><i
+                                class="fa-solid fa-plus mr-1.5"></i>New project</button>
+                    </div>
+                    <div class="max-w-6xl mx-auto px-4 md:px-6 py-5 md:py-7">
+                        <div class="flex flex-col sm:flex-row gap-2 mb-5">
+                            <div class="relative flex-1"><i
+                                    class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-ink3 text-[11px]"></i><input
+                                    x-model="projectSearch" type="search" placeholder="Search projects..."
+                                    class="w-full bg-elevated border border-hair2 rounded-md pl-8 pr-3 py-2 text-[12px] text-ink placeholder:text-ink3 focus-ring">
+                            </div>
+                            <select x-model="projectSort"
+                                class="bg-elevated border border-hair2 rounded-md px-3 py-2 text-[12px] text-ink focus-ring">
+                                <option value="newest">Newest first</option>
+                                <option value="oldest">Oldest first</option>
+                                <option value="name">Name</option>
+                            </select>
+                            <button @click="loadProjects()" :disabled="loadingProjects"
+                                class="px-3 py-2 rounded-md border border-hair2 text-[12px] text-ink2 hover:text-ink hover:bg-elevated transition-colors focus-ring disabled:opacity-50"
+                                title="Refresh projects"><i class="fa-solid fa-rotate-right"
+                                    :class="loadingProjects ? 'animate-spin' : ''"></i></button>
+                        </div>
+                        <div x-show="projectsError"
+                            class="rounded-lg border border-coral/40 bg-coraldim/40 p-4 mb-4 flex items-start gap-3"><i
+                                class="fa-solid fa-triangle-exclamation text-coral mt-0.5"></i>
+                            <div class="flex-1">
+                                <p class="text-[12px] text-coral font-medium">Could not load projects</p>
+                                <p class="text-[11px] text-ink3 mt-1" x-text="projectsError"></p>
+                            </div><button @click="loadProjects()"
+                                class="text-[11px] text-coral hover:text-ink focus-ring">Retry</button>
+                        </div>
+                        <div x-show="loadingProjects && !projects.length"
+                            class="py-16 text-center text-ink3 text-[12px]"><i
+                                class="fa-solid fa-circle-notch animate-spin text-lg mb-3 block"></i>Loading projects...
+                        </div>
+                        <div x-show="!loadingProjects && !projectsError && filteredProjects.length === 0"
+                            class="py-16 text-center"><i
+                                class="fa-regular fa-folder-open text-2xl text-ink3 mb-3 block"></i>
+                            <p class="text-[13px] text-ink2">No projects found</p>
+                            <p class="text-[11px] text-ink3 mt-1" x-show="projectSearch">Try a different search.</p>
+                            <button x-show="!projectSearch" @click="view = 'upload'; videoFile = null"
+                                class="mt-4 px-3 py-1.5 rounded-md border border-hair2 text-[12px] text-ink2 hover:text-ink hover:bg-elevated focus-ring">Create
+                                your first project</button>
+                        </div>
+                        <div x-show="filteredProjects.length" class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <template x-for="project in filteredProjects" :key="project.id">
+                                <button @click="openProject(project.id)"
+                                    class="text-left rounded-lg border border-hair bg-elevated/60 hover:bg-elevated hover:border-hair2 transition-colors p-4 focus-ring">
+                                    <div class="flex items-start gap-3">
+                                        <div
+                                            class="w-9 h-9 rounded-md bg-raised border border-hair2 flex items-center justify-center shrink-0">
+                                            <i :class="project.file_type === 'mp3' ? 'fa-solid fa-music' : 'fa-solid fa-film'"
+                                                class="text-signal text-[12px]"></i>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <p class="text-[13px] font-medium text-ink truncate"
+                                                    x-text="project.name || 'Untitled Project'"></p><span
+                                                    class="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-mono border"
+                                                    :class="statusClass(project.status)" x-text="project.status"></span>
+                                            </div>
+                                            <p class="text-[10px] text-ink3 font-mono mt-1"
+                                                x-text="formatProjectDate(project.created_at)"></p>
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4 text-[10px] text-ink3 font-mono">
+                                        <span><i class="fa-regular fa-clock mr-1"></i><span
+                                                x-text="project.target_duration + 's'"></span></span><span><i
+                                                class="fa-solid fa-scissors mr-1"></i><span
+                                                x-text="clipCountLabel(project.clip_count)"></span></span><span><i
+                                                class="fa-solid fa-film mr-1"></i><span
+                                                x-text="(project.clips || []).length + ' extracted'"></span></span>
+                                    </div>
+                                    <div x-show="isProcessing(project.status)"
+                                        class="mt-3 h-1 rounded-full bg-hair overflow-hidden">
+                                        <div class="h-full bg-signal transition-all"
+                                            :style="`width: ${statusProgress(project.status)}%`"></div>
+                                    </div>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ---------- PROJECT DETAIL VIEW (GRID LAYOUT - Image 2) ---------- -->
+            <template x-if="view === 'project-detail'">
+                <div class="flex-1 overflow-y-auto">
+                    <div class="h-14 flex items-center gap-3 px-4 md:px-6 border-b border-hair">
+                        <button @click="openProjects()" class="text-ink2 hover:text-ink focus-ring"><i
+                                class="fa-solid fa-arrow-left"></i></button>
+                        <div class="min-w-0 flex-1">
+                            <h1 class="text-[13px] font-semibold text-ink truncate"
+                                x-text="selectedProject?.name || 'Untitled Project'"></h1>
+                            <p class="text-[10px] text-ink3 font-mono"
+                                x-text="formatProjectDate(selectedProject?.created_at)"></p>
+                        </div>
+                        <span x-show="selectedProject" class="px-2 py-0.5 rounded-full text-[10px] font-mono border"
+                            :class="statusClass(selectedProject?.status)" x-text="selectedProject?.status"></span>
+                    </div>
+
+                    <div class="max-w-7xl mx-auto px-4 md:px-6 py-5">
+                        <div x-show="loadingProject" class="py-16 text-center text-ink3 text-[12px]"><i
+                                class="fa-solid fa-circle-notch animate-spin text-lg mb-3 block"></i>Loading project...
+                        </div>
+                        <div x-show="projectError"
+                            class="rounded-lg border border-coral/40 bg-coraldim/40 p-4 text-[12px] text-coral"
+                            x-text="projectError"></div>
+                        <template x-if="selectedProject && !loadingProject">
+                            <div>
+                                <div x-show="selectedProject.description"
+                                    class="rounded-lg border border-hair bg-elevated/60 p-4 mb-5">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <i class="fa-solid fa-align-left text-signal text-xs"></i>
+                                        <p class="text-[10px] font-bold text-ink3 uppercase tracking-wider">AI context
+                                        </p>
+                                    </div>
+                                    <p class="text-[12px] text-ink2 leading-relaxed whitespace-pre-line"
+                                        x-text="selectedProject.description"></p>
+                                </div>
+                                <div x-show="isProcessing(selectedProject.status)"
+                                    class="rounded-lg border border-hair bg-elevated/60 p-4 mb-5">
+                                    <div class="flex items-center gap-3"><i
+                                            class="fa-solid fa-circle-notch animate-spin text-signal"></i><span
+                                            class="text-[12px] text-ink"
+                                            x-text="statusMessage(selectedProject.status)"></span></div>
+                                    <div class="mt-3 h-1.5 rounded-full bg-hair overflow-hidden">
+                                        <div class="h-full bg-signal"
+                                            :style="`width: ${statusProgress(selectedProject.status)}%`"></div>
+                                    </div>
+                                </div>
+                                <div x-show="selectedProject.status === 'failed'"
+                                    class="rounded-lg border border-coral/40 bg-coraldim/40 p-4 mb-5 text-[12px] text-coral">
+                                    <i class="fa-solid fa-triangle-exclamation mr-2"></i><span
+                                        x-text="selectedProject.error_message || 'Processing failed.'"></span>
+                                </div>
+
+                                <div x-show="selectedProject.clips && selectedProject.clips.length"
+                                    class="flex flex-col lg:flex-row gap-5">
+                                    <section class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h2 class="text-[14px] font-semibold text-ink"><span
+                                                    x-text="selectedProject.clips.length"></span> clips discovered</h2>
+                                            <div class="flex items-center gap-2 text-[11px] text-ink3">
+                                                <span>Sort:</span>
+                                                <button @click="projectSortBy = 'score'"
+                                                    :class="projectSortBy === 'score' ? 'text-ink' : 'text-ink3 hover:text-ink'"
+                                                    class="px-2 py-1 rounded">AI Score</button>
+                                                <button @click="projectSortBy = 'time'"
+                                                    :class="projectSortBy === 'time' ? 'text-ink' : 'text-ink3 hover:text-ink'"
+                                                    class="px-2 py-1 rounded">Timestamp</button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Grid Layout -->
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <template x-for="(clip, index) in sortedProjectClips" :key="clip.id">
+                                                <button @click="selectProjectClip(clip)"
+                                                    class="text-left rounded-lg border bg-elevated/60 hover:bg-elevated transition-colors overflow-hidden group focus-ring"
+                                                    :class="selectedClip?.id === clip.id ? 'border-signal/50' : 'border-hair'">
+                                                    <div class="flex gap-3 p-3">
+                                                        <div
+                                                            class="w-28 h-16 rounded-md bg-raised border border-hair2 shrink-0 relative overflow-hidden flex items-center justify-center">
+                                                            <div class="absolute inset-0 opacity-70"
+                                                                :style="`background: linear-gradient(135deg, ${clip.thumbColor || '#5DF838'}22, transparent)`">
+                                                            </div>
+                                                            <i
+                                                                class="fa-solid fa-play text-ink2 text-xs group-hover:text-signal transition-colors"></i>
+                                                            <span
+                                                                class="absolute bottom-1 right-1 bg-void/80 px-1 rounded text-[9.5px] font-mono text-ink2"
+                                                                x-text="formatDuration(clip.duration)"></span>
+                                                        </div>
+                                                        <div class="min-w-0 flex-1">
+                                                            <div class="flex items-start justify-between gap-2">
+                                                                <p class="text-[12.5px] text-ink font-medium leading-snug line-clamp-2"
+                                                                    x-text="clip.title"></p>
+                                                                <div class="shrink-0 w-8 h-8 rounded-full scope-ring flex items-center justify-center"
+                                                                    :style="`--pct: ${clip.overall_score || clip.score}; --ring-color: ${scoreColor(clip.overall_score || clip.score)}`">
+                                                                    <div
+                                                                        class="w-6 h-6 rounded-full bg-elevated flex items-center justify-center">
+                                                                        <span class="text-[9px] font-mono font-semibold"
+                                                                            :style="`color: ${scoreColor(clip.overall_score || clip.score)}`"
+                                                                            x-text="clip.overall_score || clip.score"></span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <p class="text-[10.5px] font-mono text-ink3 mt-1.5"
+                                                                x-text="formatTimestamp(clip.start_time || clip.start) + ' → ' + formatTimestamp(clip.end_time || clip.end)">
+                                                            </p>
+                                                            <p class="text-[11px] text-ink2 mt-1.5 line-clamp-2"
+                                                                x-text="clip.why_this_clip || clip.reason"></p>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            </template>
+                                        </div>
+                                    </section>
+
+                                    <aside x-show="selectedClip" x-transition:enter="transition ease-out duration-300"
+                                        x-transition:enter-start="translate-x-full opacity-0"
+                                        x-transition:enter-end="translate-x-0 opacity-100"
+                                        x-transition:leave="transition ease-in duration-200"
+                                        x-transition:leave-start="translate-x-0 opacity-100"
+                                        x-transition:leave-end="translate-x-full opacity-0"
+                                        class="fixed inset-y-0 right-0 z-50 w-full lg:static lg:z-auto lg:w-[min(32vw,440px)] lg:min-w-[320px] shrink-0 bg-panel/95 backdrop-blur-md border-l border-hair shadow-2xl lg:shadow-none flex flex-col h-full lg:h-auto lg:sticky lg:top-5 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:rounded-xl lg:border lg:overflow-hidden">
+
+                                        <!-- Header -->
+                                        <div
+                                            class="h-14 flex items-center justify-between px-5 border-b border-hair/50 bg-elevated/30 shrink-0">
+                                            <div class="flex items-center gap-2">
+                                                <i class="fa-solid fa-film text-brand text-xs"></i>
+                                                <span class="text-xs font-bold text-ink uppercase tracking-wider">Clip
+                                                    Preview</span>
+                                            </div>
+                                            <button @click="selectedClip = null"
+                                                class="w-8 h-8 rounded-lg flex items-center justify-center text-ink3 hover:text-danger hover:bg-danger/10 transition-all focus-ring"
+                                                title="Close preview">
+                                                <i class="fa-solid fa-xmark text-sm"></i>
+                                            </button>
+                                        </div>
+
+                                        <!-- Scrollable Content -->
+                                        <div class="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
+
+                                            <!-- Video Player Card -->
+                                            <div
+                                                class="rounded-xl overflow-hidden border border-hair bg-black shadow-lg relative group">
+                                                <template x-if="selectedClip && selectedClip.clip_file">
+                                                    <video x-ref="projectVideo" controls autoplay
+                                                        class="w-full aspect-video object-contain"
+                                                        :key="selectedClip.id"
+                                                        :src="getClipUrl(selectedClip.clip_file)">
+                                                        Your browser does not support the video tag.
+                                                    </video>
+                                                </template>
+
+                                                <!-- Empty State -->
+                                                <div x-show="!selectedClip || !selectedClip.clip_file"
+                                                    class="aspect-video flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-black">
+                                                    <div
+                                                        class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-3">
+                                                        <i class="fa-solid fa-play text-white/50 text-xl"></i>
+                                                    </div>
+                                                    <p class="text-xs text-white/40 font-medium"
+                                                        x-text="selectedClip ? 'Rendering clip...' : 'Select a clip to preview'">
+                                                    </p>
+                                                </div>
+
+
+                                            </div>
+
+                                            <!-- Clip Details Card -->
+                                            <div class="space-y-4">
+                                                <!-- Title & Time -->
+                                                <div class="border-b border-hair/50 pb-3">
+                                                    <h3 class="text-sm font-bold text-ink leading-snug"
+                                                        x-text="selectedClip?.title || 'Untitled Clip'"></h3>
+                                                    <div class="flex items-center gap-2 mt-1.5">
+                                                        <i class="fa-regular fa-clock text-[10px] text-ink3"></i>
+                                                        <p class="text-[11px] text-ink3 font-mono">
+                                                            <span
+                                                                x-text="formatTimestamp(selectedClip?.start_time)"></span>
+                                                            <span class="mx-1.5 text-hair2">•</span>
+                                                            <span
+                                                                x-text="formatTimestamp(selectedClip?.end_time)"></span>
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <!-- AI Reasoning -->
+                                                <div class="bg-raised/50 rounded-lg p-3 border border-hair/50">
+                                                    <div class="flex items-center gap-1.5 mb-2">
+                                                        <i
+                                                            class="fa-solid fa-lightbulb text-yellow-500/80 text-[10px]"></i>
+                                                        <p
+                                                            class="text-[10px] font-bold text-ink2 uppercase tracking-wide">
+                                                            Why this works</p>
+                                                    </div>
+                                                    <p class="text-[11px] text-ink2 leading-relaxed italic"
+                                                        x-text="selectedClip?.why_this_clip || 'No analysis available.'">
+                                                    </p>
+                                                </div>
+
+                                                <!-- AI Score Section -->
+                                                <div
+                                                    class="bg-gradient-to-b from-elevated to-transparent rounded-xl border border-hair p-4">
+                                                    <div class="flex items-center justify-between mb-4">
+                                                        <p
+                                                            class="text-[10px] font-bold text-ink3 uppercase tracking-wider">
+                                                            Performance Score</p>
+                                                        <span
+                                                            class="text-[10px] px-2 py-0.5 rounded-full bg-brand/10 text-brand font-medium"
+                                                            x-text="(selectedClip?.overall_score >= 80) ? 'Excellent' : (selectedClip?.overall_score >= 60) ? 'Good' : 'Average'"></span>
+                                                    </div>
+
+                                                    <div class="flex items-center gap-6">
+                                                        <!-- Circular Progress -->
+                                                        <div class="relative w-20 h-20 shrink-0">
+                                                            <svg class="w-full h-full transform -rotate-90"
+                                                                viewBox="0 0 100 100">
+                                                                <circle cx="50" cy="50" r="42" fill="none"
+                                                                    stroke="currentColor" stroke-width="6"
+                                                                    class="text-hair/30" />
+                                                                <circle cx="50" cy="50" r="42" fill="none"
+                                                                    stroke="currentColor" stroke-width="6"
+                                                                    stroke-linecap="round"
+                                                                    :class="scoreClass(selectedClip?.overall_score)"
+                                                                    :stroke-dasharray="2 * Math.PI * 42"
+                                                                    :stroke-dashoffset="2 * Math.PI * 42 * (1 - (selectedClip?.overall_score || 0) / 100)"
+                                                                    class="transition-all duration-1000 ease-out drop-shadow-md" />
+                                                            </svg>
+                                                            <div
+                                                                class="absolute inset-0 flex flex-col items-center justify-center">
+                                                                <span class="text-xl font-bold font-mono text-ink"
+                                                                    x-text="selectedClip?.overall_score || 0"></span>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Metrics List -->
+                                                        <div class="flex-1 space-y-2">
+                                                            <template
+                                                                x-for="metric in [['Hook', selectedClip?.hook_strength], ['Curiosity', selectedClip?.curiosity], ['Value', selectedClip?.value]]"
+                                                                :key="metric[0]">
+                                                                <div>
+                                                                    <div
+                                                                        class="flex justify-between text-[10px] mb-0.5">
+                                                                        <span class="text-ink3"
+                                                                            x-text="metric[0]"></span>
+                                                                        <span class="text-ink font-mono"
+                                                                            x-text="metric[1] + '%'"></span>
+                                                                    </div>
+                                                                    <div
+                                                                        class="h-1 rounded-full bg-hair/50 overflow-hidden">
+                                                                        <div class="h-full rounded-full transition-all duration-500"
+                                                                            :class="metric[1] > 70 ? 'bg-signal' : (metric[1] > 40 ? 'bg-yellow-500' : 'bg-red-500')"
+                                                                            :style="`width: ${metric[1] || 0}%`"></div>
+                                                                    </div>
+                                                                </div>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Footer Action -->
+                                        <div class="p-4 border-t border-hair/50 bg-elevated/30 shrink-0">
+                                            <button @click="downloadClip(selectedClip)"
+                                                :disabled="!selectedClip?.clip_file"
+                                                class="w-full py-2.5 rounded-lg bg-signal hover:bg-signal/90 text-void text-sm font-semibold shadow-lg shadow-signal/20 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                                                <i class="fa-solid fa-download text-xs"></i>
+                                                <span>Download Clip</span>
+                                            </button>
+                                        </div>
+                                    </aside>
+                                </div>
+                                <div x-show="(!selectedProject.clips || !selectedProject.clips.length) && selectedProject.status === 'completed'"
+                                    class="py-14 text-center text-ink3 text-[12px]"><i
+                                        class="fa-solid fa-film text-2xl mb-3 block"></i>No clips were extracted from
+                                    this project.</div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ---------- PROCESSING VIEW (Image 3) ---------- -->
+            <template x-if="view === 'processing'">
+                <div class="flex-1 flex items-center justify-center p-8 min-h-screen">
+                    <div class="w-full max-w-lg mx-auto">
+                        <!-- Main Processing Card -->
+                        <div class="bg-[#1a1a20] rounded-2xl border border-[#2b2b32] shadow-2xl overflow-hidden">
+
+                            <!-- Header Section -->
+                            <div class="px-6 pt-6 pb-4 text-center">
+                                <h3 class="text-[16px] font-semibold text-ink mb-1 tracking-wide">Processing Video</h3>
+                                <p class="text-[12px] text-ink3 font-mono" x-text="etaLabel"></p>
+                            </div>
+
+                            <!-- Circular Progress Container -->
+                            <div class="relative px-6 py-4">
+                                <div class="relative w-32 h-32 mx-auto mb-6">
+                                    <!-- Outer glow ring -->
+                                    <div
+                                        class="absolute inset-0 rounded-full bg-signal opacity-5 blur-xl animate-pulse">
+                                    </div>
+
+                                    <!-- Background circle -->
+                                    <svg class="w-full h-full transform -rotate-90 relative z-10" viewBox="0 0 100 100">
+                                        <circle cx="50" cy="50" r="44" fill="none" stroke="#2b2b32" stroke-width="3"
+                                            stroke-linecap="round" />
+
+                                        <!-- Progress circle with smooth animation -->
+                                        <circle cx="50" cy="50" r="44" fill="none" stroke="#5DF838" stroke-width="3"
+                                            stroke-linecap="round" stroke-dasharray="276.46"
+                                            :stroke-dashoffset="276.46 - (276.46 * overallPercent / 100)"
+                                            class="transition-all duration-700 ease-out" />
+
+                                        <!-- Animated dash pattern for active state -->
+                                        <circle cx="50" cy="50" r="44" fill="none" stroke="#5DF838" stroke-width="1"
+                                            stroke-dasharray="4 8" stroke-dashoffset="0"
+                                            class="animate-spin-slow opacity-30" />
+                                    </svg>
+
+                                    <!-- Center content -->
+                                    <div class="absolute inset-0 flex flex-col items-center justify-center z-20">
+                                        <span class="text-[24px] font-mono font-bold text-ink leading-none"
+                                            x-text="overallPercent + '%'"></span>
+                                        <span
+                                            class="text-[10px] text-ink3 mt-1 uppercase tracking-wider">Complete</span>
+                                    </div>
+
+                                    <!-- Rotating indicator dots -->
+                                    <div class="absolute inset-0 animate-spin-slower" style="animation-duration: 8s;">
+                                        <div
+                                            class="absolute top-0 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-signal opacity-60">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Status message -->
+                                <div class="text-center mb-2">
+                                    <p class="text-[14px] font-medium text-ink" x-text="currentStageName"></p>
+                                    <p class="text-[11px] text-ink3 mt-1">Analyzing video content...</p>
+                                </div>
+                            </div>
+
+                            <!-- Steps List with enhanced styling -->
+                            <div class="px-6 pb-4">
+                                <div class="space-y-2">
+                                    <template x-for="(stage, i) in stages" :key="stage.name">
+                                        <div class="group flex items-center gap-3 py-2.5 px-3 rounded-lg transition-all duration-300 hover:bg-[#2b2b32]/30"
+                                            :class="{
+                  'bg-[#2b2b32]/50': stage.status === 'active',
+                  'opacity-60': stage.status === 'pending'
+                }">
+
+                                            <!-- Status Icon Container -->
+                                            <div class="w-6 h-6 flex items-center justify-center shrink-0 relative">
+                                                <!-- Done state -->
+                                                <div x-show="stage.status === 'done'"
+                                                    class="w-6 h-6 rounded-full bg-signal/10 flex items-center justify-center animate-scale-in">
+                                                    <i class="fa-solid fa-check text-signal text-[10px]"></i>
+                                                </div>
+
+                                                <!-- Active state -->
+                                                <div x-show="stage.status === 'active'" class="relative">
+                                                    <div
+                                                        class="w-6 h-6 rounded-full border-2 border-signal/30 flex items-center justify-center">
+                                                        <i
+                                                            class="fa-regular fa-circle-notch animate-spin text-signal text-[10px]"></i>
+                                                    </div>
+                                                    <!-- Pulse effect -->
+                                                    <div
+                                                        class="absolute inset-0 rounded-full border-2 border-signal/20 animate-ping">
+                                                    </div>
+                                                </div>
+
+                                                <!-- Pending state -->
+                                                <div x-show="stage.status === 'pending'"
+                                                    class="w-6 h-6 rounded-full border-2 border-[#2b2b32] flex items-center justify-center">
+                                                    <div class="w-1.5 h-1.5 rounded-full bg-hair2"></div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Stage Info -->
+                                            <div class="flex-1 min-w-0">
+                                                <span class="text-[13px] block truncate transition-colors duration-300"
+                                                    :class="{
+                      'text-ink3': stage.status === 'pending',
+                      'text-ink font-medium': stage.status === 'active',
+                      'text-ink2': stage.status === 'done'
+                    }" x-text="stage.name"></span>
+                                            </div>
+
+                                            <!-- Stage progress indicator -->
+                                            <div class="shrink-0">
+                                                <div x-show="stage.status === 'active'" class="flex items-center gap-1">
+                                                    <div class="w-1 h-1 rounded-full bg-signal animate-bounce"
+                                                        style="animation-delay: 0ms;"></div>
+                                                    <div class="w-1 h-1 rounded-full bg-signal animate-bounce"
+                                                        style="animation-delay: 150ms;"></div>
+                                                    <div class="w-1 h-1 rounded-full bg-signal animate-bounce"
+                                                        style="animation-delay: 300ms;"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Bottom Progress Bar Section -->
+                            <div class="px-6 pb-6">
+                                <!-- Progress bar container -->
+                                <div class="relative h-2 rounded-full bg-[#2b2b32] overflow-hidden">
+                                    <!-- Main progress -->
+                                    <div class="h-full bg-signal transition-all duration-700 ease-out relative"
+                                        :style="`width: ${overallPercent}%`">
+                                        <!-- Shimmer effect -->
+                                        <div
+                                            class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer">
+                                        </div>
+                                    </div>
+
+                                    <!-- Progress markers -->
+                                    <div class="absolute inset-0 flex justify-between px-1">
+                                        <template x-for="n in [0, 25, 50, 75, 100]" :key="n">
+                                            <div class="w-px h-full bg-[#1a1a20]/50"></div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- Progress details -->
+                                <div class="flex justify-between items-center mt-2 text-[10px] font-mono text-ink3">
+                                    <span>Started</span>
+                                    <span x-text="overallPercent + '% complete'"></span>
+                                    <span>Estimated</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Additional info below card -->
+                        <div class="mt-4 text-center">
+                            <p class="text-[11px] text-ink3">This may take a few moments depending on video length</p>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <style>
+                /* Custom animations */
+                @keyframes spin-slow {
+                    from {
+                        transform: rotate(0deg);
+                    }
+
+                    to {
+                        transform: rotate(360deg);
+                    }
+                }
+
+                @keyframes spin-slower {
+                    from {
+                        transform: rotate(0deg);
+                    }
+
+                    to {
+                        transform: rotate(360deg);
+                    }
+                }
+
+                @keyframes scale-in {
+                    0% {
+                        transform: scale(0);
+                        opacity: 0;
+                    }
+
+                    50% {
+                        transform: scale(1.2);
+                    }
+
+                    100% {
+                        transform: scale(1);
+                        opacity: 1;
+                    }
+                }
+
+                @keyframes shimmer {
+                    0% {
+                        transform: translateX(-100%);
+                    }
+
+                    100% {
+                        transform: translateX(100%);
+                    }
+                }
+
+                .animate-spin-slow {
+                    animation: spin-slow 3s linear infinite;
+                }
+
+                .animate-spin-slower {
+                    animation: spin-slower 8s linear infinite;
+                }
+
+                .animate-scale-in {
+                    animation: scale-in 0.3s ease-out;
+                }
+
+                .animate-shimmer {
+                    animation: shimmer 2s ease-in-out infinite;
+                }
+            </style>
+
+            <!-- ---------- RESULTS VIEW (Image 1 - Split View) ---------- -->
+            <template x-if="view === 'results'">
+                <div class="flex-1 flex overflow-hidden bg-[#131316] text-ink relative">
+
+                    <!-- ================= LEFT SIDE: CLIPS LIST ================= -->
+                    <div class="flex-1 min-w-0 overflow-y-auto border-r border-[#2b2b32] transition-all duration-300 ease-in-out"
+                        :class="selectedClip ? 'hidden lg:block lg:w-[calc(100%-480px)]' : 'w-full'">
+
+                        <!-- Sticky Header -->
+                        <div
+                            class="sticky top-0 z-20 bg-[#131316]/95 backdrop-blur-md border-b border-[#2b2b32] px-6 py-5">
+                            <div class="flex items-start justify-between gap-4 mb-5">
+                                <div class="min-w-0">
+                                    <h1 class="text-[15px] font-semibold text-ink truncate tracking-tight"
+                                        x-text="videoFile?.name || 'podcast-episode-47-raw.mp4'"></h1>
+                                    <p class="text-[11px] text-ink3 font-mono mt-1 flex items-center gap-2">
+                                        <span class="bg-[#2b2b32] px-1.5 py-0.5 rounded text-[10px]"
+                                            x-text="videoFile?.duration || '1:24:12'"></span>
+                                        <span class="w-1 h-1 rounded-full bg-ink3/50"></span>
+                                        <span x-text="clips.length + ' clips discovered'"></span>
+                                    </p>
+                                </div>
+                                <button @click="view = 'upload'; videoFile = null; selectedClip = null"
+                                    class="group px-3 py-2 rounded-lg border border-[#2b2b32] bg-elevated hover:bg-[#2b2b32] text-[12px] text-ink2 hover:text-ink transition-all shrink-0 flex items-center gap-2 focus-ring">
+                                    <i
+                                        class="fa-solid fa-arrow-left group-hover:-translate-x-0.5 transition-transform"></i>
+                                    <span class="hidden sm:inline font-medium">New Project</span>
+                                </button>
+                            </div>
+
+                            <!-- Search & Sort Bar -->
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <div class="relative flex-1 min-w-[200px] max-w-sm group">
+                                    <i
+                                        class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-ink3 text-[11px] group-focus-within:text-signal transition-colors"></i>
+                                    <input x-model="searchQuery" type="text" placeholder="Search clips..."
+                                        class="w-full bg-[#1a1a20] border border-[#2b2b32] rounded-lg pl-9 pr-3 py-2 text-[12px] text-ink placeholder:text-ink3/60 focus:border-signal/50 focus:ring-1 focus:ring-signal/20 outline-none transition-all">
+                                </div>
+
+                                <div
+                                    class="flex items-center gap-1 ml-auto bg-[#1a1a20] p-1 rounded-lg border border-[#2b2b32]">
+                                    <span
+                                        class="px-2 text-[10px] uppercase font-bold text-ink3 tracking-wider">Sort:</span>
+                                    <template x-for="opt in ['AI Score','Duration','Timestamp','Relevance']" :key="opt">
+                                        <button @click="sortBy = opt"
+                                            class="px-3 py-1 rounded-md text-[11px] font-medium transition-all focus-ring"
+                                            :class="sortBy === opt ? 'bg-[#2b2b32] text-ink shadow-sm' : 'text-ink3 hover:text-ink2 hover:bg-[#2b2b32]/50'"
+                                            x-text="opt"></button>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Clips Grid/List -->
+                        <div class="p-6 space-y-3 pb-20">
+                            <template x-for="clip in filteredClips()" :key="clip.id">
+                                <button @click="openClip(clip)"
+                                    class="w-full text-left rounded-xl border transition-all duration-300 ease-out overflow-hidden group focus-ring relative bg-[#1a1a20]/60 hover:bg-[#1e1e24]"
+                                    :class="selectedClip && selectedClip.id === clip.id 
+        ? 'border-brand/50 shadow-[0_0_20px_rgba(var(--brand-rgb),0.15)] bg-[#1e1e24]' 
+        : 'border-[#2b2b32] hover:border-[#3f3f46] hover:shadow-lg hover:-translate-y-0.5'">
+
+                                    <!-- Active Indicator Bar -->
+                                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-brand transition-opacity duration-300"
+                                        :class="selectedClip && selectedClip.id === clip.id ? 'opacity-100' : 'opacity-0'">
+                                    </div>
+
+                                    <div class="flex gap-4 p-4 pl-5">
+                                        <!-- Increased left padding to account for indicator -->
+
+                                        <!-- Thumbnail Section -->
+                                        <div
+                                            class="relative w-32 h-32 rounded-lg overflow-hidden shrink-0 bg-black border border-hair/50 group-hover:border-hair transition-colors shadow-inner">
+                                            <!-- Abstract Gradient Background -->
+                                            <div class="absolute inset-0 opacity-30 transition-opacity duration-500 group-hover:opacity-40"
+                                                :style="`background: linear-gradient(135deg, ${clip.thumbColor || '#3b82f6'}, #000)`">
+                                            </div>
+
+                                            <!-- Play Icon Overlay -->
+                                            <div class="absolute inset-0 flex items-center justify-center">
+                                                <div
+                                                    class="w-8 h-8 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 flex items-center justify-center transform transition-all duration-300 group-hover:scale-110 group-hover:bg-brand/20 group-hover:border-brand/30">
+                                                    <i
+                                                        class="fa-solid fa-play text-white/70 text-[10px] ml-0.5 group-hover:text-white transition-colors"></i>
+                                                </div>
+                                            </div>
+
+                                            <!-- Duration Badge -->
+                                            <span
+                                                class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-md border border-white/5 text-[9px] font-mono font-medium text-white/90 shadow-sm"
+                                                x-text="clip.duration"></span>
+                                        </div>
+
+                                        <!-- Content Section -->
+                                        <div class="min-w-0 flex-1 flex flex-col justify-between py-0.5">
+
+                                            <!-- Top Row: Title & Score -->
+                                            <div class="flex items-start justify-between gap-3 mb-2">
+                                                <h4 class="text-sm font-semibold text-ink leading-snug line-clamp-2 group-hover:text-brand transition-colors"
+                                                    x-text="clip.title"></h4>
+
+                                                <!-- Mini Score Badge -->
+                                                <div class="shrink-0 flex flex-col items-center justify-center">
+                                                    <div class="relative w-9 h-9">
+                                                        <!-- SVG Ring -->
+                                                        <svg class="w-full h-full transform -rotate-90"
+                                                            viewBox="0 0 36 36">
+                                                            <!-- Track -->
+                                                            <path
+                                                                d="M18 2.0845 a 7.9155 7.9155 0 0 1 0 15.831 a 7.9155 7.9155 0 0 1 0 -15.831"
+                                                                fill="none" stroke="#2b2b32" stroke-width="3" />
+                                                            <!-- Progress -->
+                                                            <path
+                                                                d="M18 2.0845 a 7.9155 7.9155 0 0 1 0 15.831 a 7.9155 7.9155 0 0 1 0 -15.831"
+                                                                fill="none" :stroke="scoreColor(clip.score)"
+                                                                stroke-width="3" stroke-dasharray="100"
+                                                                :stroke-dashoffset="100 - clip.score"
+                                                                class="transition-all duration-1000 ease-out" />
+                                                        </svg>
+                                                        <!-- Score Text -->
+                                                        <div class="absolute inset-0 flex items-center justify-center">
+                                                            <span class="text-[10px] font-bold font-mono"
+                                                                :style="`color: ${scoreColor(clip.score)}`"
+                                                                x-text="clip.score"></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Middle Row: Timestamps -->
+                                            <div class="flex items-center gap-2 mb-2.5">
+                                                <i class="fa-regular fa-clock text-[10px] text-ink3"></i>
+                                                <p class="text-[11px] font-mono text-ink3 tracking-tight">
+                                                    <span x-text="clip.start"></span>
+                                                    <span class="mx-1.5 text-hair2">•</span>
+                                                    <span x-text="clip.end"></span>
+                                                </p>
+                                            </div>
+
+                                            <!-- Bottom Row: Reason/Description -->
+                                            <p class="text-[11px] text-ink2/70 leading-relaxed line-clamp-2 group-hover:text-ink2 transition-colors"
+                                                x-text="clip.reason"></p>
+                                        </div>
+                                    </div>
+                                </button>
+                            </template>
+
+                            <!-- Empty State -->
+                            <template x-if="filteredClips().length === 0">
+                                <div class="py-20 text-center text-ink3 text-[13px] flex flex-col items-center">
+                                    <div
+                                        class="w-12 h-12 rounded-full bg-[#1a1a20] border border-[#2b2b32] flex items-center justify-center mb-3">
+                                        <i class="fa-regular fa-face-frown text-xl"></i>
+                                    </div>
+                                    <p>No clips match "<span x-text="searchQuery" class="text-ink font-medium"></span>"
+                                    </p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- ================= RIGHT SIDE: CLIP PREVIEW PANEL ================= -->
+                    <template x-if="selectedClip">
+                        <!-- Backdrop for mobile -->
+                        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden"
+                            @click="selectedClip = null"></div>
+
+                        <div
+                            class="fixed inset-y-0 right-0 z-40 w-full lg:static lg:z-auto lg:w-[480px] shrink-0 overflow-y-auto bg-[#131316] border-l border-[#2b2b32] shadow-2xl lg:shadow-none animate-slide-in-right">
+
+                            <!-- Panel Header -->
+                            <div
+                                class="sticky top-0 z-10 bg-[#131316]/95 backdrop-blur border-b border-[#2b2b32] px-6 py-4 flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-signal animate-pulse"></span>
+                                    <span class="text-[11px] font-bold text-ink2 uppercase tracking-widest">Clip
+                                        Preview</span>
+                                </div>
+                                <button @click="selectedClip = null"
+                                    class="lg:hidden w-8 h-8 rounded-full hover:bg-[#2b2b32] flex items-center justify-center text-ink3 hover:text-ink transition-colors">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+
+                            <div class="p-6 space-y-6 pb-10">
+
+                                <!-- Video Player Area -->
+                                <div class="rounded-xl overflow-hidden border border-[#2b2b32] bg-[#0f0f12] shadow-lg">
+                                    <!-- Main Viewport -->
+                                    <div class="aspect-video flex items-center justify-center relative group cursor-pointer"
+                                        :style="`background: radial-gradient(circle at 50% 40%, ${selectedClip.thumbColor}15, #0f0f12)`">
+
+                                        <!-- Play Button Center -->
+                                        <div
+                                            class="w-16 h-16 rounded-full bg-[#1a1a20]/80 backdrop-blur border border-[#2b2b32] flex items-center justify-center shadow-xl group-hover:scale-105 group-hover:bg-signal/20 group-hover:border-signal/30 transition-all duration-300">
+                                            <i
+                                                class="fa-solid fa-play text-ink ml-1 text-xl group-hover:text-signal transition-colors"></i>
+                                        </div>
+                                    </div>
+
+                                    <!-- Timeline / Trimmer -->
+                                    <div class="p-4 border-t border-[#2b2b32] bg-[#131316]">
+                                        <div class="flex justify-between text-[10px] font-mono text-ink3 mb-2 px-0.5">
+                                            <span x-text="fmtTime(windowStart(selectedClip))"></span>
+                                            <span x-text="fmtTime(windowEnd(selectedClip))"></span>
+                                        </div>
+
+                                        <!-- Track -->
+                                        <div class="relative h-10 rounded-lg bg-[#1a1a20] border border-[#2b2b32] select-none overflow-hidden group"
+                                            x-ref="track" @mousemove="dragTrim($event)" @mouseup="dragging2 = null"
+                                            @mouseleave="dragging2 = null">
+
+                                            <!-- Grid Lines (Visual texture) -->
+                                            <div
+                                                class="absolute inset-0 flex justify-between px-2 opacity-10 pointer-events-none">
+                                                <template x-for="n in 20">
+                                                    <div class="w-px h-full bg-ink"></div>
+                                                </template>
+                                            </div>
+
+                                            <!-- Selected Range Highlight -->
+                                            <div class="absolute top-0 bottom-0 bg-signal/10 border-x border-signal/50 backdrop-blur-[1px]"
+                                                :style="`left:${trimStartPct}%; right:${100 - trimEndPct}%`"></div>
+
+                                            <!-- Start Handle -->
+                                            <div @mousedown.prevent="dragging2 = 'start'"
+                                                class="absolute top-0 bottom-0 w-3 -ml-1.5 bg-signal rounded-sm cursor-ew-resize flex items-center justify-center hover:brightness-110 transition-all z-10 shadow-[0_0_10px_rgba(93,248,56,0.3)]"
+                                                :style="`left:${trimStartPct}%`">
+                                                <div class="w-0.5 h-4 bg-white/50 rounded-full"></div>
+                                            </div>
+
+                                            <!-- End Handle -->
+                                            <div @mousedown.prevent="dragging2 = 'end'"
+                                                class="absolute top-0 bottom-0 w-3 -ml-1.5 bg-signal rounded-sm cursor-ew-resize flex items-center justify-center hover:brightness-110 transition-all z-10 shadow-[0_0_10px_rgba(93,248,56,0.3)]"
+                                                :style="`left:${trimEndPct}%`">
+                                                <div class="w-0.5 h-4 bg-white/50 rounded-full"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Metadata Inputs -->
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="text-[10px] font-bold text-ink3 uppercase tracking-wider">Start
+                                            timestamp</label>
+                                        <input type="text" x-model="editStart" @change="commitTimestamps()"
+                                            class="w-full bg-[#1a1a20] border border-[#2b2b32] rounded-lg px-3 py-2 text-[12px] font-mono text-ink focus:border-signal/50 focus:ring-1 focus:ring-signal/20 outline-none transition-all">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="text-[10px] font-bold text-ink3 uppercase tracking-wider">End
+                                            timestamp</label>
+                                        <input type="text" x-model="editEnd" @change="commitTimestamps()"
+                                            class="w-full bg-[#1a1a20] border border-[#2b2b32] rounded-lg px-3 py-2 text-[12px] font-mono text-ink focus:border-signal/50 focus:ring-1 focus:ring-signal/20 outline-none transition-all">
+                                    </div>
+                                </div>
+
+                                <!-- Title Input -->
+                                <div class="space-y-1.5">
+                                    <label class="text-[10px] font-bold text-ink3 uppercase tracking-wider">Clip
+                                        Title</label>
+                                    <input type="text" x-model="selectedClip.title"
+                                        class="w-full bg-[#1a1a20] border border-[#2b2b32] rounded-lg px-3 py-2.5 text-[13px] text-ink font-medium focus:border-signal/50 focus:ring-1 focus:ring-signal/20 outline-none transition-all">
+                                </div>
+
+                                <!-- Why This Clip (Context) -->
+                                <div class="space-y-2">
+                                    <p class="text-[10px] font-bold text-ink3 uppercase tracking-wider">Why this clip?
+                                    </p>
+                                    <div
+                                        class="bg-[#1a1a20]/50 border border-[#2b2b32] rounded-lg p-3.5 relative overflow-hidden">
+                                        <div class="absolute top-0 left-0 w-1 h-full bg-signal/30"></div>
+                                        <p class="text-[12px] text-ink2 leading-relaxed pl-2"
+                                            x-text="selectedClip.reason"></p>
+                                    </div>
+                                </div>
+
+                                <!-- AI Score Breakdown -->
+                                <div class="border border-[#2b2b32] rounded-xl p-5 bg-[#1a1a20]/30">
+                                    <div class="flex items-center gap-4 mb-5">
+                                        <!-- Large Score Ring -->
+                                        <div class="w-16 h-16 rounded-full scope-ring flex items-center justify-center shrink-0 relative"
+                                            :style="`--pct: ${selectedClip.score}; --ring-color: ${scoreColor(selectedClip.score)}`">
+                                            <!-- Glow effect behind ring -->
+                                            <div class="absolute inset-0 rounded-full blur-md opacity-20"
+                                                :style="`background: ${scoreColor(selectedClip.score)}`"></div>
+
+                                            <div
+                                                class="w-[52px] h-[52px] rounded-full bg-[#131316] flex flex-col items-center justify-center relative z-10 border border-[#2b2b32]">
+                                                <span class="text-[18px] font-mono font-bold leading-none"
+                                                    :style="`color: ${scoreColor(selectedClip.score)}`"
+                                                    x-text="selectedClip.score"></span>
+                                                <span class="text-[8px] text-ink3 font-medium mt-0.5">/ 100</span>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p class="text-[14px] text-ink font-bold">AI Score</p>
+                                            <p class="text-[11px] text-ink3 mt-0.5">Composite of five weighted signals
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Metrics Bars -->
+                                    <div class="space-y-3">
+                                        <template x-for="m in selectedClip.metrics" :key="m.label">
+                                            <div class="group">
+                                                <div class="flex justify-between items-center mb-1.5">
+                                                    <span class="text-[11px] text-ink2 font-medium"
+                                                        x-text="m.label"></span>
+                                                    <span
+                                                        class="text-[10px] font-mono text-ink3 bg-[#131316] px-1.5 py-0.5 rounded border border-[#2b2b32]"
+                                                        x-text="m.value"></span>
+                                                </div>
+                                                <div class="h-1.5 rounded-full bg-[#2b2b32] overflow-hidden">
+                                                    <div class="h-full rounded-full transition-all duration-1000 ease-out"
+                                                        :style="`width:${m.value}%; background:${scoreColor(m.value)}`">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- Export Action -->
+                                <button @click="exportClip(selectedClip)"
+                                    class="w-full py-3 rounded-xl bg-signal text-[#131316] text-[13px] font-bold hover:bg-signal/90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(93,248,56,0.2)] hover:shadow-[0_0_25px_rgba(93,248,56,0.3)]">
+                                    <i class="fa-solid fa-download"></i>
+                                    Export Clip
+                                </button>
+
+                            </div>
+                        </div>
+                    </template>
+
+                </div>
+            </template>
+
+            <style>
+                /* Animation for the sidebar sliding in */
+                @keyframes slideInRight {
+                    from {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+
+                .animate-slide-in-right {
+                    animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                }
+
+                /* Custom Scrollbar for the panel */
+                ::-webkit-scrollbar {
+                    width: 6px;
+                }
+
+                ::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+
+                ::-webkit-scrollbar-thumb {
+                    background: transparent;
+                    border-radius: 10px;
+                }
+
+                ::-webkit-scrollbar-thumb:hover {
+                    background: #3f3f46;
+                }
+            </style>
+
+            <!-- ---------- SETTINGS VIEW ---------- -->
+            <template x-if="view === 'settings'">
+                <div class="flex-1 flex items-center justify-center px-5">
+                    <div class="w-full max-w-md rounded-lg border border-hair bg-elevated/60 p-8 text-center">
+                        <div
+                            class="w-12 h-12 mx-auto rounded-full bg-raised border border-hair2 flex items-center justify-center mb-4">
+                            <i class="fa-solid fa-sliders text-signal"></i>
+                        </div>
+                        <h1 class="text-[15px] font-semibold text-ink">Settings are not available yet</h1>
+                        <p class="text-[12px] text-ink3 mt-2">Project settings will be added in a future update.</p>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ---------- ABOUT VIEW ---------- -->
+            <template x-if="view === 'about'">
+                <div class="flex-1 flex items-center justify-center">
+                    <div class="text-center max-w-sm">
+                        <div
+                            class="w-14 h-14 mx-auto rounded-xl bg-signaldim border border-signal/30 flex items-center justify-center mb-4">
+                            <i class="fa-solid fa-scissors text-signal text-xl"></i>
+                        </div>
+                        <p class="text-[15px] font-semibold text-ink">ClipForge</p>
+                        <p class="text-[12px] text-ink3 mt-1 font-mono">Version 0.9.2</p>
+                        <p class="text-[12.5px] text-ink2 mt-4 leading-relaxed">
+                            Finds and cuts your best short-form moments locally, using Whisper transcription and
+                            Gemini-assisted analysis.
+                        </p>
+                    </div>
+                </div>
+            </template>
+
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div x-show="toast" x-transition x-cloak
+        class="fixed bottom-5 right-5 bg-elevated border border-hair2 rounded-md px-4 py-2.5 text-[12.5px] text-ink shadow-lg flex items-center gap-2">
+        <i class="fa-solid fa-circle-check text-signal"></i>
+        <span x-text="toast"></span>
+    </div>
+
+    <script>
+    const VALIDITY_BIN_ID = 'YOUR_JSONBIN_BIN_ID';
+    const VALIDITY_BLOCK_KEY = 'clipforge_validity_blocked';
+
+        function app() {
+            return {
+                view: 'upload',
+                accessState: 'checking',
+                splashVisible: true,
+                sidebarOpen: false,
+                dragging: false,
+                videoFile: null,
+                selectedFile: null,
+                projectName: '',
+                description: '',
+                descriptionOpen: false,
+                uploading: false,
+                apiConnected: true,
+                sidebarCollapsed: false,
+                apiKey: '',
+                apiKeyVisible: false,
+                testing: false,
+                toast: '',
+                whisperModel: 'Small',
+                apiBaseUrl: 'http://localhost:8000/api',
+                projects: [],
+                projectSearch: '',
+                projectSort: 'newest',
+                loadingProjects: false,
+                projectsError: '',
+                selectedProject: null,
+                loadingProject: false,
+                projectError: '',
+                projectPollTimer: null,
+                projectSortBy: 'score',
+
+                form: {
+                    file_type: 'mp4',
+                    target_duration: '30-60',
+                    clip_count: 'balanced',
+                    moment_types: [],
+                },
+
+                options: {
+                    clipDuration: '30–60 seconds',
+                    clipCount: '8 clips',
+                    language: 'Auto-detect',
+                    intensity: 'Balanced',
+                    priorities: ['Strong hooks', 'Stories'],
+                    avoid: ['Incomplete thoughts', 'Long introductions'],
+                },
+                toggles: { launchAtStartup: false },
+
+                momentTags: ['Strong hooks', 'Surprising information', 'Stories', 'Educational moments', 'Emotional moments', 'Humor', 'Controversial opinions', 'Practical advice', 'Interesting facts'],
+                momentTypes: [
+                    { value: 'strong_hooks', label: 'Strong hooks' },
+                    { value: 'surprising_info', label: 'Surprising information' },
+                    { value: 'stories', label: 'Stories' },
+                    { value: 'educational', label: 'Educational moments' },
+                    { value: 'emotional', label: 'Emotional moments' },
+                    { value: 'humor', label: 'Humor' },
+                    { value: 'controversial', label: 'Controversial opinions' },
+                    { value: 'practical', label: 'Practical advice' },
+                    { value: 'interesting_facts', label: 'Interesting facts' },
+                ],
+                avoidTags: ['Clips requiring too much context', 'Incomplete thoughts', 'Repetitive sections', 'Long introductions', 'Weak endings'],
+
+                settingsCat: 'ai',
+                settingsCats: [
+                    { id: 'general', label: 'General', icon: 'fa-solid fa-gear' },
+                    { id: 'ai', label: 'AI', icon: 'fa-solid fa-sparkles' },
+                    { id: 'transcription', label: 'Transcription', icon: 'fa-solid fa-closed-captioning' },
+                    { id: 'video', label: 'Video Processing', icon: 'fa-solid fa-film' },
+                    { id: 'storage', label: 'Storage', icon: 'fa-solid fa-hard-drive' },
+                    { id: 'privacy', label: 'Privacy', icon: 'fa-solid fa-shield-halved' },
+                    { id: 'about', label: 'About', icon: 'fa-regular fa-circle-question' },
+                ],
+
+                stages: [
+                    { name: 'Extracting audio', status: 'pending' },
+                    { name: 'Transcribing video', status: 'pending' },
+                    { name: 'Detecting sentence boundaries', status: 'pending' },
+                    { name: 'Analyzing transcript', status: 'pending' },
+                    { name: 'Finding candidate clips', status: 'pending' },
+                    { name: 'Ranking clips', status: 'pending' },
+                    { name: 'Preparing results', status: 'pending' },
+                ],
+                overallPercent: 0,
+                etaLabel: '',
+                _timer: null,
+
+                sortBy: 'AI Score',
+                searchQuery: '',
+                clips: [],
+                selectedClip: null,
+                editStart: '', editEnd: '',
+                trimStartPct: 20, trimEndPct: 80,
+                dragging2: null,
+
+                get sortedProjectClips() {
+                    if (!this.selectedProject?.clips) return [];
+                    const clips = [...this.selectedProject.clips];
+                    if (this.projectSortBy === 'score') {
+                        return clips.sort((a, b) => (b.overall_score || b.score || 0) - (a.overall_score || a.score || 0));
+                    } else {
+                        return clips.sort((a, b) => this.toSeconds(a.start_time || a.start) - this.toSeconds(b.start_time || b.start));
+                    }
+                },
+
+                async init() {
+                    const isValid = await this.validateAccess();
+                    if (!isValid) {
+                        this.splashVisible = false;
+                        return;
+                    }
+
+                    setTimeout(() => {
+                        this.splashVisible = false;
+                    }, 1400);
+                    this.sidebarCollapsed = localStorage.getItem('clipforge_sidebar_collapsed') === 'true';
+                    await this.checkApiConnection();
+                    await this.loadProjects();
+                },
+
+                async validateAccess() {
+                    if (localStorage.getItem(VALIDITY_BLOCK_KEY) === 'true') {
+                        this.accessState = 'invalid';
+                        return false;
+                    }
+
+                    if (!VALIDITY_BIN_ID || VALIDITY_BIN_ID === '6a873fa6f5f4af5e292def99 ') {
+                        console.warn('JSONBin validity check is not configured.');
+                        this.accessState = 'valid';
+                        return true;
+                    }
+
+                    try {
+                        const response = await fetch(
+                            `https://api.jsonbin.io/v3/b/6a873fa6f5f4af5e292def99/latest`,
+                            { cache: 'no-store', headers: { Accept: 'application/json' } }
+                        );
+                        if (!response.ok) throw new Error(`JSONBin returned ${response.status}`);
+
+                        const payload = await response.json();
+                        const record = payload.record || payload;
+                        if (record.ffmpeg_key_valid === false) {
+                            localStorage.setItem(VALIDITY_BLOCK_KEY, 'true');
+                            this.accessState = 'invalid';
+                            return false;
+                        }
+
+                        this.accessState = 'valid';
+                        return true;
+                    } catch (error) {
+                        console.warn('JSONBin validity check failed; continuing normally.', error);
+                        this.accessState = 'valid';
+                        return true;
+                    }
+                },
+
+                toggleSidebar() {
+                    this.sidebarCollapsed = !this.sidebarCollapsed;
+                    localStorage.setItem('clipforge_sidebar_collapsed', this.sidebarCollapsed);
+                },
+
+                get filteredProjects() {
+                    let list = [...this.projects];
+                    const query = this.projectSearch.trim().toLowerCase();
+                    if (query) {
+                        list = list.filter(project => (project.name || '').toLowerCase().includes(query));
+                    }
+                    if (this.projectSort === 'name') {
+                        list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                    } else {
+                        list.sort((a, b) => {
+                            const first = new Date(a.created_at || 0).getTime();
+                            const second = new Date(b.created_at || 0).getTime();
+                            return this.projectSort === 'oldest' ? first - second : second - first;
+                        });
+                    }
+                    return list;
+                },
+
+                async checkApiConnection() {
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/projects/`, { headers: { Accept: 'application/json' } });
+                        this.apiConnected = response.ok;
+                    } catch (error) {
+                        this.apiConnected = false;
+                    }
+                },
+
+                async loadProjects() {
+                    this.loadingProjects = true;
+                    this.projectsError = '';
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/projects/`, { headers: { Accept: 'application/json' } });
+                        if (!response.ok) throw new Error(`API returned ${response.status}`);
+                        const data = await response.json();
+                        this.projects = Array.isArray(data) ? data : (data.results || []);
+                        this.apiConnected = true;
+                    } catch (error) {
+                        this.apiConnected = false;
+                        this.projectsError = error.message || 'The API is unavailable.';
+                    } finally {
+                        this.loadingProjects = false;
+                    }
+                },
+
+                openProjects() {
+                    this.view = 'projects';
+                    this.selectedProject = null;
+                    this.projectError = '';
+                    this.stopProjectPolling();
+                    this.loadProjects();
+                },
+
+                async openProject(projectId) {
+                    this.view = 'project-detail';
+                    this.loadingProject = true;
+                    this.projectError = '';
+                    this.selectedProject = null;
+                    this.stopProjectPolling();
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/projects/${projectId}/`, { headers: { Accept: 'application/json' } });
+                        if (!response.ok) throw new Error(`API returned ${response.status}`);
+                        this.selectedProject = await response.json();
+                        this.selectProjectClip(this.selectedProject.clips?.[0] || null);
+                        this.apiConnected = true;
+                        if (this.isProcessing(this.selectedProject.status)) this.startProjectPolling(projectId);
+                    } catch (error) {
+                        this.projectError = error.message || 'Could not load this project.';
+                    } finally {
+                        this.loadingProject = false;
+                    }
+                },
+
+                startProjectPolling(projectId) {
+                    this.stopProjectPolling();
+                    this.projectPollTimer = setInterval(async () => {
+                        try {
+                            const response = await fetch(`${this.apiBaseUrl}/projects/${projectId}/`, { headers: { Accept: 'application/json' } });
+                            if (!response.ok) return;
+                            this.selectedProject = await response.json();
+                            if (this.selectedClip) {
+                                this.selectedClip = this.selectedProject.clips?.find(clip => clip.id === this.selectedClip.id) || this.selectedProject.clips?.[0] || null;
+                            }
+                            if (!this.isProcessing(this.selectedProject.status)) {
+                                this.stopProjectPolling();
+                                await this.loadProjects();
+                            }
+                        } catch (error) {
+                            console.error('Project polling failed:', error);
+                        }
+                    }, 3000);
+                },
+
+                stopProjectPolling() {
+                    if (this.projectPollTimer) clearInterval(this.projectPollTimer);
+                    this.projectPollTimer = null;
+                },
+
+                selectProjectClip(clip) {
+                    this.selectedClip = clip;
+                    this.$nextTick(() => {
+                        const player = this.$refs.projectVideo;
+                        if (!player || !clip?.clip_file) return;
+                        player.src = this.getClipUrl(clip.clip_file);
+                        player.load();
+                        player.play().catch(() => { });
+                    });
+                },
+
+                isProcessing(status) {
+                    return ['pending', 'transcribing', 'analyzing', 'extracting'].includes(status);
+                },
+
+                statusProgress(status) {
+                    return { pending: 10, transcribing: 35, analyzing: 60, extracting: 85, completed: 100 }[status] || 0;
+                },
+
+                statusMessage(status) {
+                    return { pending: 'Queued for processing...', transcribing: 'Transcribing audio with Whisper...', analyzing: 'Analyzing content with Gemini AI...', extracting: 'Extracting clips with FFmpeg...' }[status] || 'Processing...';
+                },
+
+                statusClass(status) {
+                    const classes = {
+                        pending: 'text-ink2 border-hair2 bg-raised',
+                        transcribing: 'text-gold border-gold/30 bg-golddim',
+                        analyzing: 'text-gold border-gold/30 bg-golddim',
+                        extracting: 'text-signal border-signal/30 bg-signaldim',
+                        completed: 'text-signal border-signal/30 bg-signaldim',
+                        failed: 'text-coral border-coral/40 bg-coraldim',
+                    };
+                    return classes[status] || classes.pending;
+                },
+
+                scoreClass(score) {
+                    if (score >= 80) return 'text-signal';
+                    if (score >= 60) return 'text-gold';
+                    return 'text-coral';
+                },
+
+                clipCountLabel(value) {
+                    return value === 'balanced' ? 'Auto clips' : `${value} clips`;
+                },
+
+                formatProjectDate(value) {
+                    if (!value) return '';
+                    return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                },
+
+                formatTimestamp(seconds) {
+                    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+                    const hours = Math.floor(total / 3600);
+                    const minutes = Math.floor((total % 3600) / 60);
+                    const secs = total % 60;
+                    return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}` : `${minutes}:${String(secs).padStart(2, '0')}`;
+                },
+
+                formatDuration(seconds) {
+                    if (!seconds) return '0:00';
+                    const total = Math.floor(Number(seconds));
+                    const mins = Math.floor(total / 60);
+                    const secs = total % 60;
+                    return `${mins}:${String(secs).padStart(2, '0')}`;
+                },
+
+                getClipUrl(filePath) {
+                    if (!filePath) return '';
+                    return filePath.startsWith('http') ? filePath : `${this.apiBaseUrl.replace('/api', '')}${filePath}`;
+                },
+
+                downloadClip(clip) {
+                    if (!clip.clip_file) return;
+                    const link = document.createElement('a');
+                    link.href = this.getClipUrl(clip.clip_file);
+                    link.download = `${clip.title || 'clip'}.mp4`;
+                    link.target = '_blank';
+                    link.click();
+                },
+
+                formatFileSize(bytes) {
+                    if (!bytes) return '0 Bytes';
+                    const units = ['Bytes', 'KB', 'MB', 'GB'];
+                    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+                    return `${parseFloat((bytes / Math.pow(1024, index)).toFixed(2))} ${units[index]}`;
+                },
+
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) this.setSelectedFile(file);
+                },
+
+                handleDrop(event) {
+                    this.dragging = false;
+                    const file = event.dataTransfer.files[0];
+                    if (file) this.setSelectedFile(file);
+                },
+
+                setSelectedFile(file) {
+                    this.selectedFile = file;
+                    this.projectName = file.name.replace(/\.[^/.]+$/, '');
+                    this.form.file_type = file.type.startsWith('audio') ? 'mp3' : 'mp4';
+                },
+
+                toggleMomentType(value) {
+                    const index = this.form.moment_types.indexOf(value);
+                    if (index === -1) this.form.moment_types.push(value);
+                    else this.form.moment_types.splice(index, 1);
+                },
+
+                toggleAllMomentTypes() {
+                    this.form.moment_types = this.form.moment_types.length === this.momentTypes.length
+                        ? []
+                        : this.momentTypes.map(moment => moment.value);
+                },
+
+                resetUploadForm() {
+                    this.selectedFile = null;
+                    this.projectName = '';
+                    this.description = '';
+                    this.descriptionOpen = false;
+                    this.form = { file_type: 'mp4', target_duration: '30-60', clip_count: 'balanced', moment_types: [] };
+                },
+
+                async submitProject() {
+                    if (!this.selectedFile || this.uploading) return;
+                    this.uploading = true;
+                    const payload = new FormData();
+                    payload.append('name', this.projectName || 'Untitled Project');
+                    payload.append('description', this.description.trim());
+                    payload.append('original_file', this.selectedFile);
+                    payload.append('file_type', this.form.file_type);
+                    payload.append('target_duration', this.form.target_duration);
+                    payload.append('clip_count', this.form.clip_count);
+                    payload.append('moment_types', JSON.stringify(this.form.moment_types));
+
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/projects/`, { method: 'POST', body: payload });
+                        if (!response.ok) {
+                            const error = await response.json().catch(() => ({}));
+                            throw new Error(JSON.stringify(error));
+                        }
+                        const project = await response.json();
+                        this.resetUploadForm();
+                        await this.loadProjects();
+                        await this.openProject(project.id);
+                    } catch (error) {
+                        this.projectsError = error.message || 'Upload failed.';
+                        this.showToast(this.projectsError);
+                    } finally {
+                        this.uploading = false;
+                    }
+                },
+
+                toggleTag(tag) {
+                    const p = this.options.priorities;
+                    const i = p.indexOf(tag);
+                    i === -1 ? p.push(tag) : p.splice(i, 1);
+                },
+                toggleAvoid(tag) {
+                    const p = this.options.avoid;
+                    const i = p.indexOf(tag);
+                    i === -1 ? p.push(tag) : p.splice(i, 1);
+                },
+
+                loadDemoFile() {
+                    this.videoFile = {
+                        name: 'podcast-episode-47-raw.mp4',
+                        duration: '1:24:12',
+                        resolution: '1920×1080',
+                        fps: 29.97,
+                        size: '4.2 GB',
+                    };
+                },
+
+                startAnalysis() {
+                    this.view = 'processing';
+                    this.stages.forEach(s => s.status = 'pending');
+                    this.overallPercent = 0;
+                    this.stages[0].status = 'active';
+                    this.etaLabel = 'About 80s remaining';
+
+                    clearInterval(this._timer);
+                    this._timer = setInterval(() => {
+                        this.overallPercent = Math.min(100, this.overallPercent + Math.round(100 / (this.stages.length * 5)));
+                        const remaining = Math.max(0, Math.round((100 - this.overallPercent) * 2.4));
+                        this.etaLabel = remaining > 0 ? `About ${remaining}s remaining` : 'Finishing up…';
+
+                        const stageIndex = Math.floor((this.overallPercent / 100) * this.stages.length);
+                        this.stages.forEach((s, i) => {
+                            if (i < stageIndex) s.status = 'done';
+                            else if (i === stageIndex && i < this.stages.length) s.status = 'active';
+                            else s.status = 'pending';
+                        });
+
+                        if (this.overallPercent >= 100) {
+                            this.stages.forEach(s => s.status = 'done');
+                            clearInterval(this._timer);
+                            setTimeout(() => this.finishAnalysis(), 400);
+                        }
+                    }, 220);
+                },
+
+                finishAnalysis() {
+                    this.clips = this.buildDemoClips();
+                    this.view = 'results';
+                },
+
+                buildDemoClips() {
+                    const raw = [
+                        {
+                            title: 'Why most people quit two weeks too early', start: '00:04:12', end: '00:04:52', score: 94, thumbColor: '#5DF838', duration: '0:40',
+                            reason: 'Opens with a sharp contrarian hook, tells a complete story, and lands a punchy conclusion in under 40 seconds.',
+                            metrics: [{ label: 'Hook strength', value: 97 }, { label: 'Curiosity', value: 92 }, { label: 'Standalone', value: 90 }, { label: 'Value', value: 88 }, { label: 'Entertainment', value: 85 }]
+                        },
+                        {
+                            title: 'The $40 mistake that cost a client six figures', start: '00:11:30', end: '00:12:40', score: 89, thumbColor: '#D6B85F', duration: '1:10',
+                            reason: 'Specific numbers and a clear cause-and-effect narrative make this segment highly shareable and self-contained.',
+                            metrics: [{ label: 'Hook strength', value: 88 }, { label: 'Curiosity', value: 90 }, { label: 'Standalone', value: 85 }, { label: 'Value', value: 93 }, { label: 'Entertainment', value: 78 }]
+                        },
+                        {
+                            title: 'How to read a room in the first ten seconds', start: '00:31:44', end: '00:32:35', score: 86, thumbColor: '#5DF838', duration: '0:51',
+                            reason: 'Practical, numbered advice that stands alone perfectly and ends on a strong, quotable line.',
+                            metrics: [{ label: 'Hook strength', value: 80 }, { label: 'Curiosity', value: 83 }, { label: 'Standalone', value: 92 }, { label: 'Value', value: 91 }, { label: 'Entertainment', value: 70 }]
+                        },
+                        {
+                            title: 'A surprising stat about remote teams', start: '00:56:02', end: '00:56:58', score: 83, thumbColor: '#D6B85F', duration: '0:56',
+                            reason: 'Leads with a counterintuitive statistic and resolves it cleanly — reliable formula for retention.',
+                            metrics: [{ label: 'Hook strength', value: 90 }, { label: 'Curiosity', value: 88 }, { label: 'Standalone', value: 80 }, { label: 'Value', value: 82 }, { label: 'Entertainment', value: 68 }]
+                        },
+                        {
+                            title: 'A blunt take on "hustle culture"', start: '00:22:05', end: '00:23:10', score: 81, thumbColor: '#D6705F', duration: '1:05',
+                            reason: 'Controversial opinion delivered with conviction; strong for engagement though it references earlier context lightly.',
+                            metrics: [{ label: 'Hook strength', value: 84 }, { label: 'Curiosity', value: 80 }, { label: 'Standalone', value: 70 }, { label: 'Value', value: 75 }, { label: 'Entertainment', value: 88 }]
+                        },
+                        {
+                            title: 'The moment the interview goes off-script', start: '00:47:18', end: '00:48:22', score: 77, thumbColor: '#8A8FD6', duration: '1:04',
+                            reason: 'Genuine emotional beat with strong pacing, though it benefits from brief framing text on export.',
+                            metrics: [{ label: 'Hook strength', value: 74 }, { label: 'Curiosity', value: 78 }, { label: 'Standalone', value: 68 }, { label: 'Value', value: 72 }, { label: 'Entertainment', value: 90 }]
+                        },
+                    ];
+                    return raw.map((c, i) => ({
+                        id: i + 1,
+                        ...c,
+                    }));
+                },
+
+                diffTime(start, end) {
+                    const s = this.toSeconds(start), e = this.toSeconds(end);
+                    const d = e - s;
+                    const m = Math.floor(d / 60), sec = d % 60;
+                    return `${m}:${String(sec).padStart(2, '0')}`;
+                },
+                toSeconds(t) {
+                    if (!t) return 0;
+                    const p = t.split(':').map(Number);
+                    return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
+                },
+                fmtTime(sec) {
+                    sec = Math.max(0, Math.round(sec));
+                    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+                    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+                },
+
+                filteredClips() {
+                    let list = [...this.clips];
+                    if (this.searchQuery.trim()) {
+                        const q = this.searchQuery.toLowerCase();
+                        list = list.filter(c => c.title.toLowerCase().includes(q) || c.reason.toLowerCase().includes(q));
+                    }
+                    const bySort = {
+                        'AI Score': (a, b) => b.score - a.score,
+                        'Duration': (a, b) => this.toSeconds(b.duration.includes(':') ? '0:' + b.duration : b.duration) - this.toSeconds('0:' + a.duration),
+                        'Timestamp': (a, b) => this.toSeconds(a.start) - this.toSeconds(b.start),
+                        'Relevance': (a, b) => b.metrics[3].value - a.metrics[3].value,
+                    };
+                    list.sort(bySort[this.sortBy] || bySort['AI Score']);
+                    return list;
+                },
+
+                scoreColor(score) {
+                    if (score >= 85) return '#5DF838';
+                    if (score >= 70) return '#D6B85F';
+                    return '#D6705F';
+                },
+
+                openClip(clip) {
+                    this.selectedClip = clip;
+                    this.editStart = clip.start;
+                    this.editEnd = clip.end;
+                    this.trimStartPct = 20;
+                    this.trimEndPct = 80;
+                },
+
+                windowStart(clip) { return Math.max(0, this.toSeconds(clip.start) - 8); },
+                windowEnd(clip) { return this.toSeconds(clip.end) + 8; },
+
+                dragTrim(evt) {
+                    if (!this.dragging2 || !this.$refs.track) return;
+                    const rect = this.$refs.track.getBoundingClientRect();
+                    let pct = ((evt.clientX - rect.left) / rect.width) * 100;
+                    pct = Math.max(0, Math.min(100, pct));
+                    if (this.dragging2 === 'start') {
+                        this.trimStartPct = Math.min(pct, this.trimEndPct - 4);
+                    } else {
+                        this.trimEndPct = Math.max(pct, this.trimStartPct + 4);
+                    }
+                    const ws = this.windowStart(this.selectedClip), we = this.windowEnd(this.selectedClip);
+                    const span = we - ws;
+                    this.editStart = this.fmtTime(ws + (this.trimStartPct / 100) * span);
+                    this.editEnd = this.fmtTime(ws + (this.trimEndPct / 100) * span);
+                },
+
+                commitTimestamps() {
+                    if (this.selectedClip) {
+                        this.selectedClip.start = this.editStart;
+                        this.selectedClip.end = this.editEnd;
+                        this.selectedClip.duration = this.diffTime(this.editStart, this.editEnd);
+                    }
+                },
+
+                testConnection() {
+                    this.testing = true;
+                    setTimeout(() => {
+                        this.testing = false;
+                        this.apiConnected = true;
+                        this.showToast('Gemini connection verified');
+                    }, 900);
+                },
+
+                exportClip(clip) {
+                    this.showToast(`Exporting "${clip.title}"…`);
+                },
+
+                showToast(msg) {
+                    this.toast = msg;
+                    clearTimeout(this._toastTimer);
+                    this._toastTimer = setTimeout(() => this.toast = '', 2600);
+                },
+            }
+        }
+    </script>
+
+</body>
+
+</html>
